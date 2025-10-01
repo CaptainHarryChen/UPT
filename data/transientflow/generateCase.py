@@ -14,11 +14,11 @@ from shapely.geometry import Point,Polygon
 
 import torch
 import numpy as np
-import multiprocessing
+import matplotlib
+matplotlib.use('Agg')  # 在导入pyplot前设置
 import matplotlib.pyplot as plt
 import io
 from PIL import Image
-from multiprocessing import Process
 
 from PyFoam.RunDictionary.ParsedParameterFile import ParsedParameterFile
 from PyFoam.RunDictionary.ParsedParameterFile import ParsedBoundaryDict
@@ -126,21 +126,16 @@ def prepareCase(src,dest,n_points,velocity,n_cores,x_res,y_res):
     
 
     while True:
-        process = Process(target=generate_mesh,args=(dest+"mesh.msh",n_points))
-
+        failed = False
         try:
-            process.start()
-            process.join()
+            generate_mesh(dest+"mesh.msh",n_points)
         except Exception as e:
             print("retry mesh generation")
-        
-        finally:
-            process.terminate()
-        
+            failed = True
 
         object_mask,n_detected_objects = generate_object_mask(dest,x_res,y_res)
 
-        if process.exitcode == 0 and object_mask is not None and n_points == n_detected_objects:
+        if not failed and object_mask is not None and n_points == n_detected_objects:
             print("Mesh generated")
             break
         else:
@@ -432,13 +427,8 @@ def main():
 
         x,y,z = readmesh(work_dir)
         
-        pool_obj = multiprocessing.Pool()
-        
-        U  = pool_obj.map(readU,[(i,work_dir) for i in range(1,max_time_steps+1)])
-        p  = pool_obj.map(readp,[(i,work_dir) for i in range(1,max_time_steps+1)])
-        
-
-        pool_obj.close()
+        U  = [readU((i,work_dir)) for i in range(1,max_time_steps+1)]
+        p  = [readp((i,work_dir)) for i in range(1,max_time_steps+1)]
 
         U_stacked = torch.stack(U)
         
@@ -457,10 +447,7 @@ def main():
             torch.save(y,solution_dir+"y.th")
 
         shutil.rmtree(work_dir)
-        pool_obj = multiprocessing.Pool()
-        img_list = pool_obj.map(scatter_plot,[(i,x,y,v,triangles,mesh_points) for i in range(U_stacked.shape[0])])
-        
-        pool_obj.close()
+        img_list = [scatter_plot((i,x,y,v,triangles,mesh_points)) for i in range(U_stacked.shape[0])]
 
         for i in range(len(img_list)):
             img_list[i]._min_frame = 0
