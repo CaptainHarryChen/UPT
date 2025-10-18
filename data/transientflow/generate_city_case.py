@@ -3,14 +3,11 @@ import argparse
 import shutil
 import random
 import time
-from tqdm import tqdm
 import pickle
 from fluidfoam import readscalar
 from fluidfoam import readmesh
 from fluidfoam import readvector
-from sklearn.cluster import DBSCAN
 import meshio
-from shapely.geometry import Point,Polygon
 
 import torch
 import numpy as np
@@ -41,29 +38,15 @@ def readPhi(arg):
     i,dest = arg
     return torch.tensor(readscalar(dest,str(i),'phi'))
 
-plot_height = 5.0
-def scatter_plot(arg):
-    i,x,y,v,triangles,mesh_points = arg
-    fig = plt.figure(figsize=(plot_height*2.8, plot_height), dpi=100)
-    plt.tripcolor(mesh_points[:,0],mesh_points[:,1],triangles,v[i],alpha=1.0,shading='flat', antialiased=True, linewidth=0.72,edgecolors='face')
-    img_buf = io.BytesIO()
-    fig.savefig(img_buf,format='png')
-    plt.close(fig)
-    #print(i)
-    return Image.open(img_buf)
-
-
-def prepareCase(src,dest,n_points,velocity,n_cores):
+def prepareCase(src, dest, n_points, velocity, n_cores):
     if os.path.exists(dest) and os.path.isdir(dest):
         shutil.rmtree(dest)
-
-    destination = shutil.copytree(src,dest)
+    shutil.copytree(src,dest)
     
     while True:
         failed = False
         try:
             generate_mesh(dest+"mesh.msh",n_points)
-
             runner = BasicRunner(argv=["gmshToFoam","-case",dest,dest+"mesh.msh"],logname="logifle",noLog=True)
             runner.start()
 
@@ -71,11 +54,9 @@ def prepareCase(src,dest,n_points,velocity,n_cores):
             f['FrontPlane']['type'] = 'empty'
             f['BackPlane']['type'] = 'empty'
             f.writeFile()
-
             f = ParsedParameterFile(dest+"0/U")
             f['internalField'] = 'uniform ('+str(velocity)+' 0 0)'
             f.writeFile()
-
             f = ParsedParameterFile(dest+"system/decomposeParDict")
             f['numberOfSubdomains'] = n_cores
             f.writeFile()
@@ -96,118 +77,48 @@ def prepareCase(src,dest,n_points,velocity,n_cores):
 
 
 def get_current_case(parent_directory):
-    
-
     # Get a list of all directories in the parent directory
     directories = [d for d in os.listdir(parent_directory) if os.path.isdir(os.path.join(parent_directory, d))]
-
     #check if empty
     if not any(directories):
         return 0
-
     # Extract numerical parts from directory names and convert to integers
     existing_numbers = [int(d.split('_')[1]) for d in directories if d.startswith("case_") and d[5:].isdigit()]
-
     # Find the lowest missing directory number
     lowest_missing_number = None
     for i in range(1, max(existing_numbers) + 2):
         if i not in existing_numbers:
             lowest_missing_number = i
             break
-
     return lowest_missing_number
 
 
-def find_first_available_line(file_path):
-    # Read the content of the file
-    with open(file_path, 'r') as file:
-        lines = file.readlines()
-
-    # Find the first empty line
-    empty_line_number = next((i + 1 for i, line in enumerate(lines) if not line.strip()), None)
-
-    if empty_line_number is not None:
-        print(f"Found empty line at line {empty_line_number}")
-    else:
-        # If no empty line is found, create one at the end of the file
-        empty_line_number = len(lines) + 1
-        lines.append('\n')
-
-        # Write the modified content back to the file
-        with open(file_path, 'w') as file:
-            file.writelines(lines)
-
-        print(f"Created empty line at line {empty_line_number}")
-
-    return empty_line_number
-
-
-
-def write_status_report(file_path, line_number, new_content):
-    # Read the content of the file
-    with open(file_path, 'r') as file:
-        lines = file.readlines()
-
-    # Check if the specified line number is valid
-    if 1 <= line_number <= len(lines):
-        # Modify the specific line
-        lines[line_number - 1] = new_content + '\n'  # Adding '\n' to maintain proper line endings
-
-        # Write the modified content back to the file
-        with open(file_path, 'w') as file:
-            file.writelines(lines)
-        print(f"Content written to line {line_number} in {file_path}")
-    else:
-        print(f"Invalid line number: {line_number}")
-
-
-
-
 def main():
-
     parser = argparse.ArgumentParser()
-
     parser.add_argument('n_objects', type=int, help='maximum number of circles/partial circles the case should have (min is 1)')
     parser.add_argument('n_cases', type=int, help='number of cases to be run')
     parser.add_argument('n_cores',type = int, help='number of CPU-cores to use for computation')
     parser.add_argument('empty_case',type=str, help='the empty openfoam case directory')
     parser.add_argument('dest', type=str, help='target directory for the OpenFOAM Cases')
     parser.add_argument('working_dir',type=str, help='working directory for OpenFoam Simulation')
-
+    
     args = parser.parse_args()
-
     num_points = args.n_objects
     assert num_points>0, "n_objects < 1"
-
-    x_res = 384
-    y_res = 256
-    
-
     n_cores = args.n_cores
     assert n_cores>1, "at least two core should be used"
-
-    #save_raw = args.save_raw
-    #assert save_raw == 0 or save_raw == 1 , "save_raw is either 0 or 1"
-    save_raw = 1
-
     mpiInformation = LAMMachine(nr=n_cores)
-
     n_cases = args.n_cases
     src = args.empty_case
     dest = args.dest
     work_dir = args.working_dir
-
     dest = os.path.join(dest, '')
     work_dir = os.path.join(work_dir, '')
-
     current_case_number = get_current_case(dest)
-
-
-    delta_t = [0.05,0.025,0.01,0.005,0.0025,0.001,0.0005,0.00025,0.0001,0.00005,0.000025,0.00001]
-    # delta_t = [0.002,0.001,0.0005,0.00025,0.0001,0.00005,0.000025,0.00001]
-    delta_t_index = 0
-
     
+    init_vel_min, init_vel_max = 2.0, 7.0
+    delta_t = [0.05,0.025,0.01,0.005,0.0025,0.001,0.0005,0.00025,0.0001,0.00005,0.000025,0.00001]
+    delta_t_index = 0
 
     print("Working directory is: " + work_dir)
     print("Cases are written to: " + dest)
@@ -215,31 +126,18 @@ def main():
     if not os.path.exists(work_dir):
         os.makedirs(work_dir)
 
-    while current_case_number <= n_cases:
-        
-        
-        
+    while current_case_number < n_cases:
         print("current case: ",str(current_case_number))
-        
-
-        n_points = random.randint(max(1, num_points // 2),num_points)
-        
-        velocity = random.uniform(0.01,0.06)
-        
-
+        n_points = random.randint(max(1, num_points // 2), num_points)
+        velocity = random.uniform(init_vel_min, init_vel_max)
         nr_time_steps = 0
-
-        
-        
         crash_counter = 0
-        object_mask = prepareCase(src,work_dir,n_points,velocity,n_cores)
-
-        exit()
+        prepareCase(src,work_dir,n_points,velocity,n_cores)
+        # exit()
 
         msh = meshio.read(work_dir+"/mesh.msh")
         triangles = msh.cells_dict['triangle'][(msh.points[msh.cells_dict['triangle']][:,:,-1] == 0)[:,0]]
         mesh_points = msh.points
-
         time.sleep(5)
         
         delta_t_index = 0
@@ -265,16 +163,11 @@ def main():
             print("List out of bound, restarting outer loop")
             continue
         
-        
-
         runner = BasicRunner(argv=["redistributePar","-reconstruct","-case",work_dir],logname="logifle",noLog=True,lam=mpiInformation)
         runner.start()
-
-        
         current_case_number = get_current_case(dest)
         solution_dir = dest+"/case_"+str(current_case_number)+"/"
         
-
         for tries in range(10):
             try:
                 os.mkdir(solution_dir)
@@ -285,85 +178,26 @@ def main():
             else:
                 print("case available, claiming...")
                 break
-
-        break
-        # os.remove(work_dir+"PyFoamState.CurrentTime")
-        # os.remove(work_dir+"PyFoamState.LastOutputSeen")
-        # os.remove(work_dir+"PyFoamState.StartedAt")
-        # os.remove(work_dir+"PyFoamState.TheState")
-        # #os.remove(work_dir+"WorkingDirectory.foam")
-        # for item in os.listdir(work_dir):
-        #     if item.endswith(".foam"):
-        #         os.remove(os.path.join(work_dir,item))
-
-
-
-        # # convert OpenFOAM to interpolated image
-        # # os.system(f"python openfoam_to_image.py --src {work_dir} --dst {solution_dir} --grid_height {y_res} --grid_width {x_res}")
-
-        # object_mask = generate_object_mask(work_dir,x_res,y_res)
-        # torch.save(object_mask,solution_dir+"object_mask.th")
-
-
-
+        os.remove(work_dir+"PyFoamState.CurrentTime")
+        os.remove(work_dir+"PyFoamState.LastOutputSeen")
+        os.remove(work_dir+"PyFoamState.StartedAt")
+        os.remove(work_dir+"PyFoamState.TheState")
         
-
-        # with ParsedParameterFile(work_dir+"0/U") as f:
-        #     initial_velocity = float(str(f['internalField']).split('(')[1].split(" ")[0])
-
-        # simulation_description = {"initial_velocity": initial_velocity, "n_objects": n_points}
-
+        for name in os.listdir(work_dir):
+            path = os.path.join(work_dir, name)
+            if name.startswith("processor") and os.path.isdir(path):
+                try:
+                    shutil.rmtree(path)
+                except Exception as e:
+                    print("Failed to remove {}: {}".format(path, e))
+        try:
+            shutil.copytree(work_dir, solution_dir, dirs_exist_ok=True)
+        except Exception as e:
+            print("Failed to copy {} -> {}: {}".format(work_dir, solution_dir, e))
         
-
-        # with open(solution_dir+"simulation_description.pkl",'wb') as handle:
-        #     pickle.dump(simulation_description, handle)
-
-
-        # #shutil.make_archive(solution_dir+"mesh",dest+"mesh.msh",format='bztar')
-        # shutil.make_archive(base_name=solution_dir+"mesh",
-        #                     format='bztar',
-        #                     root_dir=work_dir,
-        #                     base_dir="mesh.msh")
-
-        
-
-        # x,y,z = readmesh(work_dir)
-        
-        # U  = [readU((i,work_dir)) for i in range(1,max_time_steps+1)]
-        # p  = [readp((i,work_dir)) for i in range(1,max_time_steps+1)]
-
-        # U_stacked = torch.stack(U)
-        
-        # x = torch.tensor(x)
-        # y = torch.tensor(y)
-        # v = torch.sqrt(U_stacked[:,0,:]**2+U_stacked[:,1,:]**2+U_stacked[:,2,:]**2)
-
-        
-        # if save_raw == 1:
-            
-        #     for i in range(len(U)):
-        #         local_U = U[i].view(3,-1)[:2]
-        #         local_p = p[i].view(1,-1)
-        #         torch.save(torch.cat([local_U,local_p],dim=0),solution_dir+('{:0>8}'.format(str(i)))+"_mesh.th")
-        #     torch.save(x,solution_dir+"x.th")
-        #     torch.save(y,solution_dir+"y.th")
-
-        # shutil.rmtree(work_dir)
-        # img_list = [scatter_plot((i,x,y,v,triangles,mesh_points)) for i in range(U_stacked.shape[0])]
-
-        # for i in range(len(img_list)):
-        #     img_list[i]._min_frame = 0
-        #     img_list[i].n_frames = 1
-        #     img_list[i]._PngImageFile__frame = 0
-
-        # img_list[0].save(solution_dir+'U.gif',format='GIF',append_images=img_list[1:],save_all=True,duration=50,loop=0)
-
-        # print("solution directory: ", solution_dir)
-
-        
-        # current_case_number = get_current_case(dest)
-
-        # time.sleep(5)
+        print("solution directory: ", solution_dir)
+        current_case_number = get_current_case(dest)
+        time.sleep(5)
 
 if __name__=="__main__":
     main()

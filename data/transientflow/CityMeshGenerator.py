@@ -47,9 +47,15 @@ def generate_mesh(output_filename, n_objects):
     gmsh.model.add('model')
     
     # 计算域尺寸
-    domain_xmin, domain_xmax = -0.5, 1.0
-    domain_ymin, domain_ymax = -0.5, 0.5
-    domain_zmin, domain_zmax = 0.0, 0.5
+    domain_xmin, domain_xmax = 0.0, 800.0
+    domain_ymin, domain_ymax = 0.0, 400.0
+    domain_zmin, domain_zmax = 0.0, 110.0
+    building_width_min, building_width_max = 40.0, 70.0
+    building_depth_min, building_depth_max = 40.0, 70.0
+    building_height_min, building_height_max = 40.0, 100.0
+    margin = 10.0
+    # 网格设置
+    res_min = random.uniform(5.0, 10.0)
     
     # 直接创建三维计算域长方体
     domain = gmsh.model.occ.addBox(
@@ -68,13 +74,18 @@ def generate_mesh(output_filename, n_objects):
     fluid_domain = [(3, domain)]
     
     for i in range(n_objects):
-        # 随机生成长方体参数
-        width = random.uniform(0.05, 0.15)
-        height = random.uniform(0.05, domain_zmax - 0.01)  # 高度不超过计算域高度
-        depth = random.uniform(0.05, 0.15)
-        center_x = random.uniform(domain_xmin + width/2 + 0.01, domain_xmax - width/2 - 0.01)
-        center_y = random.uniform(domain_ymin + depth/2 + 0.01, domain_ymax - depth/2 - 0.01)
-        
+        # 将随机值按 margin 量化：先除以 margin，四舍五入到最近整数，再乘以 margin
+        def _quantize_to_margin(val, margin_val):
+            return round(val / margin_val) * margin_val
+        def quantized_uniform(a, b):
+            v = random.uniform(a, b)
+            return _quantize_to_margin(v, margin)
+        width = quantized_uniform(building_width_min, building_width_max)
+        height = quantized_uniform(building_height_min, building_height_max)
+        depth = quantized_uniform(building_depth_min, building_depth_max)
+        center_x = quantized_uniform(domain_xmin + width/2 + margin, domain_xmax - width/2 - margin)
+        center_y = quantized_uniform(domain_ymin + depth/2 + margin, domain_ymax - depth/2 - margin)
+
         # 直接创建三维长方体
         building = gmsh.model.occ.addBox(
             center_x - width/2, 
@@ -193,9 +204,6 @@ def generate_mesh(output_filename, n_objects):
     fluid_volumes = [v[1] for v in fluid_domain]
     gmsh.model.addPhysicalGroup(3, fluid_volumes, name="internal")
     
-    # 网格设置
-    res_min = random.uniform(0.01, 0.02)
-    
     gmsh.model.mesh.field.add("Distance", 1)
     gmsh.model.mesh.field.setNumbers(1, "SurfacesList", building_faces)
     gmsh.model.mesh.field.setNumber(1, "Sampling", 100)
@@ -219,23 +227,8 @@ def generate_mesh(output_filename, n_objects):
     
     gmsh.write(output_filename)
     
-    # 网格质量检查
     msh = meshio.read(output_filename)
     print(f"Mesh generated with {len(msh.points)} points")
-    
-    # 计算三角形面积（仅用于质量检查）
-    if 'triangle' in msh.cells_dict:
-        triangles = msh.cells_dict['triangle']
-        if len(triangles) > 0:
-            t = msh.points[triangles]
-            x1 = t[:, 0, 0]
-            y1 = t[:, 0, 1]
-            x2 = t[:, 1, 0]
-            y2 = t[:, 1, 1]
-            x3 = t[:, 2, 0]
-            y3 = t[:, 2, 1]
-            area = triangle_area(x1, y1, x2, y2, x3, y3)
-            print(f"Mesh area ratio: {area.max()/area.min() if area.min() > 0 else 'N/A'}")
     
     gmsh.finalize()
 

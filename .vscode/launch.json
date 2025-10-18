@@ -11,7 +11,7 @@
             "request": "launch",
             "program": "${file}",
             "console": "integratedTerminal",
-            "args": "${command:pickArgs}", // 3 1 16 ~/datasets/transientflow/EmptyCase ~/datasets/transientflow/generated ~/datasets/transientflow/workspace
+            "args": "${command:pickArgs}", // 3 1 16 ${workspaceFolder}/data/transientflow/EmptyCase ~/datasets/transientflow/generated ~/datasets/transientflow/workspace
             "justMyCode": false
         },
 
@@ -21,7 +21,7 @@
             "request": "launch",
             "program": "${file}",
             "console": "integratedTerminal",
-            "args": ["3", "1", "16", "~/datasets/transientflow/EmptyCase", "~/datasets/transientflow/generated", "~/datasets/transientflow/workspace"],
+            "args": ["3", "1", "16", "${workspaceFolder}/data/transientflow/EmptyCase", "~/datasets/transientflow/generated2D", "~/datasets/transientflow/workspace2D"],
             "justMyCode": false
         },
 
@@ -31,7 +31,7 @@
             "request": "launch",
             "program": "${file}",
             "console": "integratedTerminal",
-            "args": ["30", "1", "16", "~/datasets/transientflow/EmptyCaseCity", "~/datasets/transientflow/generated", "~/datasets/transientflow/workspace"],
+            "args": ["20", "1000", "64", "${workspaceFolder}/data/transientflow/EmptyCaseCity", "~/datasets/transientflow/generated", "~/datasets/transientflow/workspace"],
             "justMyCode": false
         }
     ]
