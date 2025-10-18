@@ -55,7 +55,7 @@ def generate_mesh(output_filename, n_objects):
     building_height_min, building_height_max = 40.0, 100.0
     margin = 10.0
     # 网格设置
-    res_min = random.uniform(5.0, 10.0)
+    res_min = random.uniform(3.0, 5.0)
     
     # 直接创建三维计算域长方体
     domain = gmsh.model.occ.addBox(
@@ -206,22 +206,23 @@ def generate_mesh(output_filename, n_objects):
     
     gmsh.model.mesh.field.add("Distance", 1)
     gmsh.model.mesh.field.setNumbers(1, "SurfacesList", building_faces)
-    gmsh.model.mesh.field.setNumber(1, "Sampling", 100)
+    gmsh.model.mesh.field.setNumber(1, "Sampling", 200)
     
     gmsh.model.mesh.field.add("Threshold", 2)
     gmsh.model.mesh.field.setNumber(2, "InField", 1)
     gmsh.model.mesh.field.setNumber(2, "SizeMin", res_min)
     gmsh.model.mesh.field.setNumber(2, "SizeMax", res_min * 2.9)
     gmsh.model.mesh.field.setNumber(2, "DistMin", 0)
-    gmsh.model.mesh.field.setNumber(2, "DistMax", 0.2)
+    gmsh.model.mesh.field.setNumber(2, "DistMax", (building_width_min + building_width_max) / 2)
     
     gmsh.option.setNumber("Mesh.MeshSizeExtendFromBoundary", 0)
     gmsh.option.setNumber("Mesh.MeshSizeFromPoints", 0)
     gmsh.option.setNumber("Mesh.MeshSizeFromCurvature", 0)
     gmsh.model.mesh.field.setAsBackgroundMesh(2)
     
-    # 设置网格算法（推荐使用Netgen）
-    gmsh.option.setNumber("Mesh.Algorithm", 6)  # 6 = Netgen
+    gmsh.option.setNumber("Mesh.Algorithm3D", 4)  # 4=Frontal-Delaunay (原6=Netgen)
+    gmsh.option.setNumber("Mesh.Optimize", 1)     # 启用网格优化
+    gmsh.option.setNumber("Mesh.OptimizeNetgen", 1)  # 使用Netgen优化器
     
     gmsh.model.mesh.generate(3)
     
