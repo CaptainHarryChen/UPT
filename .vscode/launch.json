@@ -31,7 +31,7 @@
             "request": "launch",
             "program": "${file}",
             "console": "integratedTerminal",
-            "args": ["20", "1000", "64", "${workspaceFolder}/data/transientflow/EmptyCaseCity", "~/datasets/transientflow/generated", "~/datasets/transientflow/workspace"],
+            "args": ["20", "1000", "32", "${workspaceFolder}/data/transientflow/EmptyCaseCity", "~/datasets/transientflow/generated", "~/datasets/transientflow/workspace"],
             "justMyCode": false
         }
     ]
