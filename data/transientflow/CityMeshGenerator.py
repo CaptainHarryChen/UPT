@@ -191,11 +191,11 @@ def generate_mesh(output_filename, n_objects):
         raise ValueError("Boundary face identification failed.")
     
     # 物理组命名
-    gmsh.model.addPhysicalGroup(2, front_faces, name="FrontPlane")
-    gmsh.model.addPhysicalGroup(2, back_faces, name="BackPlane")
-    gmsh.model.addPhysicalGroup(2, outflow_faces, name="outflow")
-    gmsh.model.addPhysicalGroup(2, inflow_faces, name="inflow")
-    gmsh.model.addPhysicalGroup(2, sidewall_faces, name="sidewalls")
+    gmsh.model.addPhysicalGroup(2, front_faces, name="ground")
+    gmsh.model.addPhysicalGroup(2, back_faces, name="sky")
+    gmsh.model.addPhysicalGroup(2, outflow_faces, name="outlet")
+    gmsh.model.addPhysicalGroup(2, inflow_faces, name="inlet")
+    gmsh.model.addPhysicalGroup(2, sidewall_faces, name="sides")
     
     # 建筑墙面（包括顶面）
     gmsh.model.addPhysicalGroup(2, building_faces, name="wall")

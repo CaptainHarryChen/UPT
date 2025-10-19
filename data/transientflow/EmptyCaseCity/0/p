@@ -20,37 +20,37 @@ internalField   uniform 0;
 
 boundaryField
 {
-
+    inlet
+    {
+        // 入口：压力零梯度
+        type            zeroGradient;
+    }
+    outlet
+    {
+        // 出口：固定参考压力 0
+        type            fixedValue;
+        value           uniform 0;
+    }
+    ground
+    {
+        // 地面：压力零梯度
+        type            zeroGradient;
+    }
+    sky
+    {
+        // 天空：固定参考压力 0
+        type            fixedValue;
+        value           uniform 0;
+    }
+    sides
+    {
+        // 侧壁：对称条件
+        type            symmetry;
+    }
     wall
     {
+        // 壁面：压力零梯度
         type            zeroGradient;
-    }
-    sidewalls
-    {
-        type            zeroGradient;
-    }
-    inflow
-    {
-        type            zeroGradient;
-    }
-    outflow
-    {
-        type            fixedValue;
-        value           $internalField;
-    }
-    FrontPlane
-    {
-        type            empty;
-    }
-    FrontBackPlane
-    {
-        type            empty;
-    }
-
-
-    defaultFaces
-    {
-        type            empty;
     }
 }
 

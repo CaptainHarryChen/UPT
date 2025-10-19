@@ -17,44 +17,44 @@ FoamFile
 dimensions      [0 1 -1 0 0 0 0];
 
 
-internalField   uniform (0.05 0 0);
+internalField   uniform (5 0 0);
 
 
 boundaryField
 {
-
-
-    wall
-    {
-        type noSlip;
-    }
-    sidewalls
-    {
-        type            noSlip;
-    }
-    inflow
+    inlet
     {
         type            fixedValue;
         value           $internalField;
     }
-    outflow
+    outlet
     {
+        // 出口：inletOutlet，回流时速度设为 0
         type            inletOutlet;
         inletValue      uniform (0 0 0);
         value           uniform (0 0 0);
     }
-    FrontPlane
+    ground
     {
-        type            empty;
+        // 地面：无滑移（粗糙度在 nut 使用粗糙壁面函数）
+        type            noSlip;
     }
-    BackPlane
+    sky
     {
-        type            empty;
+        // 天空：对称/自由滑移
+        type            inletOutlet;
+        inletValue      $internalField; // 自由流速度
+        value           $internalField;
     }
-    
-    defaultFaces
+    sides
     {
-        type            empty;
+        // 其他侧面：对称/滑移，避免侧向阻塞
+        type            symmetry;
+    }
+    wall
+    {
+        // 建筑物墙面：无滑移
+        type            noSlip;
     }
 }
 

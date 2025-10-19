@@ -51,8 +51,7 @@ def prepareCase(src, dest, n_points, velocity, n_cores):
             runner.start()
 
             f = ParsedBoundaryDict(dest+"constant/polyMesh/boundary")
-            f['FrontPlane']['type'] = 'empty'
-            f['BackPlane']['type'] = 'empty'
+            f['sides']['type'] = 'symmetry'
             f.writeFile()
             f = ParsedParameterFile(dest+"0/U")
             f['internalField'] = 'uniform ('+str(velocity)+' 0 0)'
