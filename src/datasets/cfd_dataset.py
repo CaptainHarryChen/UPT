@@ -4,6 +4,7 @@ import einops
 import numpy as np
 import scipy
 import torch
+import pickle
 from kappadata.copying.image_folder import copy_imagefolder_from_global_to_local
 from kappautils.param_checking import to_2tuple
 from torch_geometric.nn.pool import radius, radius_graph
@@ -77,7 +78,7 @@ class CfdDataset(DatasetBase):
         self.clamp = clamp
         self.clamp_mode = clamp_mode
         self.num_input_points_cache = []
-        if norm == "none":
+        if norm == "none" or norm == None:
             self.mean = torch.tensor([0., 0., 0.])
             self.std = torch.tensor([1., 1., 1.])
         elif version == "v1-1sim":
@@ -350,6 +351,32 @@ class CfdDataset(DatasetBase):
             num_train_sequences = 8000
             num_valid_sequences = 1000
             num_test_sequences = 1000
+            if self.split == "train":
+                split_seqnames = [caseidx_to_seqname[case_idx] for case_idx in sorted_caseidxs[:num_train_sequences]]
+                assert len(split_seqnames) == num_train_sequences
+            elif self.split == "valid":
+                split_seqnames = [
+                    caseidx_to_seqname[case_idx]
+                    for case_idx in sorted_caseidxs[num_train_sequences:num_train_sequences + num_valid_sequences]
+                ]
+                assert len(split_seqnames) == num_valid_sequences
+            elif self.split == "test":
+                split_seqnames = [
+                    caseidx_to_seqname[case_idx]
+                    for case_idx in sorted_caseidxs[num_train_sequences + num_valid_sequences:]
+                ]
+                assert len(split_seqnames) == num_test_sequences
+            else:
+                raise NotImplementedError
+            if self.max_num_sequences is not None:
+                split_seqnames = split_seqnames[:self.max_num_sequences]
+            return split_seqnames
+        if self.version == "version1":
+            caseidx_to_seqname = {int(seqname.split("_")[1]): seqname for seqname in seqnames}
+            sorted_caseidxs = list(sorted(caseidx_to_seqname.keys()))
+            num_train_sequences = 82
+            num_valid_sequences = 5
+            num_test_sequences = 5
             if self.split == "train":
                 split_seqnames = [caseidx_to_seqname[case_idx] for case_idx in sorted_caseidxs[:num_train_sequences]]
                 assert len(split_seqnames) == num_train_sequences

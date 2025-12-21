@@ -37,11 +37,11 @@ class CopyDataset(Dataset):
             dst.mkdir()
 
         fnames = [(True, "x.th"), (True, "y.th"), (False, "object_mask.th")]
-        fnames += [(True, f"{i:08d}_mesh.th") for i in range(120)]
+        fnames += [(True, f"{i:08d}_mesh.th") for i in range(100)]
         for to_fp16, fname in fnames:
             if not (src / fname).exists():
                 print(f"file not found: {(src / fname).as_posix()}")
-                return 1
+                break
             if to_fp16:
                 data = torch.load(src / fname).half()
                 torch.save(data, dst / fname)

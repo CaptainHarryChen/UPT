@@ -59,9 +59,9 @@ class MeanVarDataset(Dataset):
         case_uri = self.case_uris[idx]
         assert case_uri.name.startswith("case_")
         uris = get_torch_files(case_uri)
-        if len(uris) != 120:
+        # if len(uris) != 120:
             #print(f"invalid number of uris for case '{case_uri.as_posix()}' len={len(uris)}")
-            raise RuntimeError(f"invalid number of uris for case '{case_uri.as_posix()}' len={len(uris)}")
+            # raise RuntimeError(f"invalid number of uris for case '{case_uri.as_posix()}' len={len(uris)}")
         data = torch.stack([torch.load(uri) for uri in uris])
         mean = torch.zeros(3)
         var = torch.zeros(3)

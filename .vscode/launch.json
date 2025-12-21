@@ -19,9 +19,19 @@
             "name": "generateCase.py",
             "type": "debugpy",
             "request": "launch",
-            "program": "${file}",
+            "program": "data/transientflow/generateCase.py",
             "console": "integratedTerminal",
-            "args": ["3", "1", "16", "${workspaceFolder}/data/transientflow/EmptyCase", "~/datasets/transientflow/generated2D", "~/datasets/transientflow/workspace2D"],
+            "args": ["3", "1000", "32", "${workspaceFolder}/data/transientflow/EmptyCase", "~/datasets/transientflow2D/generated", "~/datasets/transientflow2D/workspace"],
+            "justMyCode": false
+        },
+
+        {
+            "name": "process_data2D",
+            "type": "debugpy",
+            "request": "launch",
+            "program": "data/transientflow/cfddataset_from_openfoam.py",
+            "console": "integratedTerminal",
+            "args": ["--src", "/home/dell/datasets/transientflow2D/generated", "--dst", "/home/dell/datasets/transientflow2D/version1", "--num_workers", "50"],
             "justMyCode": false
         },
 
@@ -29,10 +39,22 @@
             "name": "generate_city_case.py",
             "type": "debugpy",
             "request": "launch",
-            "program": "${file}",
+            "program": "data/transientflow/generate_city_case.py",
             "console": "integratedTerminal",
             "args": ["20", "1000", "32", "${workspaceFolder}/data/transientflow/EmptyCaseCity", "~/datasets/transientflow/generated", "~/datasets/transientflow/workspace"],
             "justMyCode": false
-        }
+        },
+
+        {
+            "name": "train_cfd.py",
+            "type": "debugpy",
+            "request": "launch",
+            "program": "main_train.py",
+            "cwd": "${workspaceFolder}/src",
+            "console": "integratedTerminal",
+            "args": ["--device", "0", "--hp", "./yamls/cfd/e100_lr5e5_8M_lat512_fp32.yaml"
+],
+            "justMyCode": false
+        },
     ]
 }
