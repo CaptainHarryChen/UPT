@@ -374,7 +374,7 @@ class CfdDataset(DatasetBase):
         if self.version == "version1":
             caseidx_to_seqname = {int(seqname.split("_")[1]): seqname for seqname in seqnames}
             sorted_caseidxs = list(sorted(caseidx_to_seqname.keys()))
-            num_train_sequences = 360
+            num_train_sequences = 320
             num_valid_sequences = 0
             num_test_sequences = 40
             if self.split == "train":
@@ -389,7 +389,7 @@ class CfdDataset(DatasetBase):
             elif self.split == "test":
                 split_seqnames = [
                     caseidx_to_seqname[case_idx]
-                    for case_idx in sorted_caseidxs[num_train_sequences + num_valid_sequences:]
+                    for case_idx in sorted_caseidxs[num_train_sequences + num_valid_sequences:num_train_sequences + num_valid_sequences + num_test_sequences]
                 ]
                 assert len(split_seqnames) == num_test_sequences
             else:
