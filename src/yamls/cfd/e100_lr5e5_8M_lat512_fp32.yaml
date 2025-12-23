@@ -36,6 +36,8 @@ datasets:
     num_input_points: ${vars.num_input_points}
     num_query_points: ${vars.num_query_points}
     num_query_points_mode: arbitrary
+    radius_graph_r: ${vars.radius_graph_r}
+    radius_graph_max_num_neighbors: ${vars.radius_graph_max_num_neighbors}
     norm: ${vars.norm}
     clamp: ${vars.clamp}
     clamp_mode: ${vars.clamp_mode}
@@ -49,6 +51,8 @@ datasets:
     split: train
     num_input_timesteps: .inf
     num_input_points: ${vars.rollout_num_input_points}
+    radius_graph_r: ${vars.radius_graph_r}
+    radius_graph_max_num_neighbors: ${vars.radius_graph_max_num_neighbors}
     norm: ${vars.norm}
     clamp: ${vars.clamp}
     clamp_mode: ${vars.clamp_mode}
@@ -63,6 +67,8 @@ datasets:
     split: test
     num_input_timesteps: .inf
     num_input_points: ${vars.rollout_num_input_points}
+    radius_graph_r: ${vars.radius_graph_r}
+    radius_graph_max_num_neighbors: ${vars.radius_graph_max_num_neighbors}
     norm: ${vars.norm}
     clamp: ${vars.clamp}
     clamp_mode: ${vars.clamp_mode}

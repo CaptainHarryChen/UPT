@@ -374,9 +374,9 @@ class CfdDataset(DatasetBase):
         if self.version == "version1":
             caseidx_to_seqname = {int(seqname.split("_")[1]): seqname for seqname in seqnames}
             sorted_caseidxs = list(sorted(caseidx_to_seqname.keys()))
-            num_train_sequences = 82
-            num_valid_sequences = 5
-            num_test_sequences = 5
+            num_train_sequences = 360
+            num_valid_sequences = 0
+            num_test_sequences = 40
             if self.split == "train":
                 split_seqnames = [caseidx_to_seqname[case_idx] for case_idx in sorted_caseidxs[:num_train_sequences]]
                 assert len(split_seqnames) == num_train_sequences
