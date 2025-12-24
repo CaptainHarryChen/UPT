@@ -3,8 +3,8 @@ name: 10ksims-t100-e100-lr5e5-8to24r5k32q8-nodes2048to512-8M-lion-fp32
 stage_name: stage1
 vars:
   lr: 5.0e-5
-  batch_size: 32
-  max_batch_size: 32
+  batch_size: 16
+  max_batch_size: 16
   epochs: 100
   version: version1
   num_input_points: [ 8192, 24576 ]
@@ -36,8 +36,6 @@ datasets:
     num_input_points: ${vars.num_input_points}
     num_query_points: ${vars.num_query_points}
     num_query_points_mode: arbitrary
-    radius_graph_r: ${vars.radius_graph_r}
-    radius_graph_max_num_neighbors: ${vars.radius_graph_max_num_neighbors}
     norm: ${vars.norm}
     clamp: ${vars.clamp}
     clamp_mode: ${vars.clamp_mode}
@@ -51,8 +49,6 @@ datasets:
     split: train
     num_input_timesteps: .inf
     num_input_points: ${vars.rollout_num_input_points}
-    radius_graph_r: ${vars.radius_graph_r}
-    radius_graph_max_num_neighbors: ${vars.radius_graph_max_num_neighbors}
     norm: ${vars.norm}
     clamp: ${vars.clamp}
     clamp_mode: ${vars.clamp_mode}
@@ -67,8 +63,6 @@ datasets:
     split: test
     num_input_timesteps: .inf
     num_input_points: ${vars.rollout_num_input_points}
-    radius_graph_r: ${vars.radius_graph_r}
-    radius_graph_max_num_neighbors: ${vars.radius_graph_max_num_neighbors}
     norm: ${vars.norm}
     clamp: ${vars.clamp}
     clamp_mode: ${vars.clamp_mode}

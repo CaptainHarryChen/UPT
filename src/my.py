@@ -1,4 +1,6 @@
 import torch
+from torch_geometric.nn.pool import radius_graph
+from torch.utils.data import DataLoader
 from pathlib import Path
 
 import einops
@@ -25,7 +27,7 @@ def main():
         output_path=Path("./outputs"),
         model_path=None,
         stage_name="stage1",
-        stage_id="sdfsfg",
+        stage_id="test",
         temp_path=Path("temp"),
     )
     
@@ -39,7 +41,7 @@ def main():
         datasets_dict[dataset_key] = dataset_from_kwargs(
             dataset_config_provider=dataset_config_provider,
             path_provider=path_provider,
-            num_supernodes=dataset_kwargs["collators"][0]["num_supernodes"],
+            # num_supernodes=dataset_kwargs["collators"][0]["num_supernodes"],
             **dataset_kwargs,
         )
     
@@ -101,32 +103,34 @@ def main():
             print(f"Failed to load state_dict from checkpoint: {e}")
     
     load_ckpt(
-        ckpt_path=Path("./outputs/stage1/train1/checkpoints/cfd_simformer_model.conditioner cp=latest model.th"),
+        ckpt_path=Path("./outputs/stage1/train1/checkpoints/cfd_simformer_model.conditioner cp=E100_U25300_S809600 model.th"),
         submodel=model.conditioner,
     )
     load_ckpt(
-        ckpt_path=Path("./outputs/stage1/train1/checkpoints/cfd_simformer_model.decoder cp=latest model.th"),
+        ckpt_path=Path("./outputs/stage1/train1/checkpoints/cfd_simformer_model.decoder cp=E100_U25300_S809600 model.th"),
         submodel=model.decoder,
     )
     load_ckpt(
-        ckpt_path=Path("./outputs/stage1/train1/checkpoints/cfd_simformer_model.encoder cp=latest model.th"),
+        ckpt_path=Path("./outputs/stage1/train1/checkpoints/cfd_simformer_model.encoder cp=E100_U25300_S809600 model.th"),
         submodel=model.encoder,
     )
     load_ckpt(
-        ckpt_path=Path("./outputs/stage1/train1/checkpoints/cfd_simformer_model.latent cp=latest model.th"),
+        ckpt_path=Path("./outputs/stage1/train1/checkpoints/cfd_simformer_model.latent cp=E100_U25300_S809600 model.th"),
         submodel=model.latent,
     )
     model.to(device)
 
     # ============================
-    # 从 test_rollout 取一批数据并执行 model.rollout
+    # 取一批数据并执行 model.rollout
     # ============================
-    from torch.utils.data import DataLoader
 
     # 与 CfdSimformerTrainer.dataset_mode 保持一致
     dataset_mode = "x mesh_pos query_pos mesh_edges geometry2d timestep velocity target"
 
     rollout_dataset, rollout_collator = data_container.get_dataset("train_rollout", mode=dataset_mode)
+    num_rollout_timesteps = 99
+    radius_graph_r = 5.0
+    radius_graph_max_num_neighbors = 32
 
     # 使用与训练中类似的 batch_size（YAML 中 max_num_sequences=32）
     rollout_loader = DataLoader(
@@ -138,6 +142,22 @@ def main():
 
     (batch_data, ctx) = next(iter(rollout_loader))
     x, mesh_pos, query_pos, mesh_edges, geometry2d, timestep, velocity, target = batch_data
+    
+    if mesh_edges is None:
+        flow = "target_to_source"
+        supernode_idxs = ctx["supernode_idxs"]
+        mesh_edges = radius_graph(
+            x=mesh_pos,
+            r=radius_graph_r,
+            max_num_neighbors=radius_graph_max_num_neighbors,
+            batch=ctx["batch_idx"],
+            loop=True,
+            flow=flow,
+        )
+        if supernode_idxs is not None:
+            is_supernode_edge = torch.isin(mesh_edges[0], supernode_idxs)
+            mesh_edges = mesh_edges[:, is_supernode_edge]
+        mesh_edges = mesh_edges.T
     
     # 分辨率用 geometry2d 的 H, W
     resolution = (geometry2d.shape[1], geometry2d.shape[2])
@@ -168,6 +188,7 @@ def main():
     print("batch_idx.shape    ", ctx["batch_idx"].shape)
     print("unbatch_idx.shape  ", ctx["unbatch_idx"].shape)
     print("unbatch_select.shape", ctx["unbatch_select"].shape)
+    print("num_rollout_timesteps ", num_rollout_timesteps)
 
     # 将所有需要的张量搬到与模型相同的 device
     x = x.to(device)
@@ -175,6 +196,7 @@ def main():
     velocity = velocity.to(device)
     mesh_pos = mesh_pos.to(device)
     query_pos = query_pos.to(device)
+    target = target.to(device)
     if mesh_edges is not None:
         mesh_edges = mesh_edges.to(device)
     batch_idx = ctx["batch_idx"].to(device)
@@ -205,11 +227,67 @@ def main():
             batch_idx=batch_idx,
             unbatch_idx=unbatch_idx,
             unbatch_select=unbatch_select,
-            mode="latent",
+            num_rollout_timesteps=num_rollout_timesteps,
+            mode="image",
         )
 
     print("\n=== rollout output ===")
     print("preds.shape        ", preds.shape)
+
+    # ============================
+    # 计算 prediction 与 ground-truth 的时间相关系数
+    # 参考 OfflineCorrelationTimeCallback._forward 实现
+    # ============================
+    assert target.ndim == 3, "expected target to be of shape (N, C, T)"
+
+    # 截断到与 rollout 一致的时间长度
+    if target.size(2) != num_rollout_timesteps:
+        target = target[:, :, :num_rollout_timesteps]
+
+    x_hat = preds  # (N, C, T)
+
+    start = 0
+    mean_corrs_per_timestep = []
+    batch_size = batch_idx.unique().numel()
+    for i in range(batch_size):
+        # 当前样本的点数
+        num_points_i = (batch_idx == i).sum().item()
+        end = start + num_points_i
+        # 选择当前样本的所有点
+        cur_preds = x_hat[start:end]
+        cur_target = target[start:end]
+
+        # per-point, per-channel 的均值和方差
+        cur_preds_mean = torch.mean(cur_preds, dim=1, keepdim=True)
+        cur_target_mean = torch.mean(cur_target, dim=1, keepdim=True)
+        cur_preds_std = torch.std(cur_preds, dim=1, unbiased=False)
+        cur_target_std = torch.std(cur_target, dim=1, unbiased=False)
+
+        # 按照论文/源码计算每个时间步的平均相关系数
+        mean_corr_per_timestep = (
+            torch.mean((cur_preds - cur_preds_mean) * (cur_target - cur_target_mean), dim=1)
+            / (cur_preds_std * cur_target_std).clamp(min=1e-12)
+        ).mean(dim=0)
+
+        mean_corrs_per_timestep.append(mean_corr_per_timestep)
+        start = end
+
+    mean_corrs_per_timestep = torch.stack(mean_corrs_per_timestep)  # (batch_size, T)
+    assert mean_corrs_per_timestep.shape == (batch_size, num_rollout_timesteps)
+
+    # 平均相关系数（对 batch 和时间平均）
+    mean_corr_all = mean_corrs_per_timestep.mean().item()
+    print(f"\n=== correlation statistics ===")
+    print(f"mean correlation over all timesteps & batch: {mean_corr_all:.4f}")
+
+    # 不同阈值下的 correlation time（与 OfflineCorrelationTimeCallback 一致）
+    for thresh in [0.1, 0.2, 0.3, 0.4, 0.5, 0.6, 0.7, 0.8, 0.9]:
+        # (mean_corrs >= thresh) 为 bool，min(dim=1) 返回 (all_ge, first_index)
+        min_values, min_indices = (mean_corrs_per_timestep >= thresh).min(dim=1)
+        # 如果始终 >= thresh，则 min_indices 为 0，对应“持续到最后一个时间步”
+        min_indices[min_values] = num_rollout_timesteps
+        mean_corr_time = min_indices.float().mean().item()
+        print(f"correlation time (thresh={thresh:.1f}): {mean_corr_time:.2f} steps")
 
     # ============================
     # 只用 preds 做灰度 GIF，可视化 rollout
@@ -219,8 +297,7 @@ def main():
     num_points, num_channels, num_rollout_timesteps = preds.shape
 
     # 反归一化到物理空间（当前 norm=none 等价于原值，这里保持一致）
-    rollout_root_dataset = data_container.get_dataset("test_rollout")
-    preds_denorm = rollout_root_dataset.denormalize(preds.clone().cpu(), inplace=False)
+    preds_denorm = rollout_dataset.denormalize(preds.clone().cpu(), inplace=False)
 
     # 使用除最后一维以外的通道计算“强度”（例如速度模长），形状: (total_num_points, num_rollout_timesteps)
     preds_intensity = preds_denorm[:, :-1, :].norm(dim=1)
@@ -228,8 +305,6 @@ def main():
     # 位置使用 query_pos（单 batch），形状 (num_points, 2)
     assert query_pos.dim() == 3 and query_pos.size(0) == 1
     pos = query_pos[0].cpu()
-
-    import io
 
     def _tensor_to_pil(values_1xn, progress: float, pos_2d):
         """将 [num_points] 的数据和坐标转换成一张灰度 PIL 图像。"""
