@@ -1,20 +1,20 @@
 wandb: cvsim
-name: 10ksims-t100-e100-lr5e5-8to24r5k32q8-nodes2048to512-8M-lion-fp32
+name: 360sims-t100-e300-lr5e5-8to24r5k32q8-nodes512to256-8M-lion-fp32
 stage_name: stage1
 vars:
   lr: 5.0e-5
-  batch_size: 16
-  max_batch_size: 16
-  epochs: 100
+  batch_size: 64
+  max_batch_size: 64
+  epochs: 300
   version: version1
-  num_input_points: [ 8192, 24576 ]
-  num_query_points: 8192
-  num_supernodes: 2048
-  num_latent_tokens: 512
+  num_input_points: [ 4096, 12288 ]
+  num_query_points: 4096
+  num_supernodes: 512
+  num_latent_tokens: 256
   radius_graph_r: 5.0
-  radius_graph_max_num_neighbors: 32
-  rollout_num_input_points: 16384
-  norm: none
+  radius_graph_max_num_neighbors: 64
+  rollout_num_input_points: 8192
+  norm: not_none
   clamp: 0
   clamp_mode: log
   max_num_timesteps: 100

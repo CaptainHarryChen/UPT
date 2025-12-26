@@ -52,35 +52,6 @@ def main():
         seed = 182376
     )
 
-    # 只为方便调试数据，这里暂时不构建完整模型
-    # 如果以后需要，可以参考 train_stage.py 中的用法来创建 trainer 和 model
-
-    # 1) 看一下 train 数据集的基本信息
-    raw_dataset = data_container.get_dataset("train")
-    print(f"raw train dataset type: {type(raw_dataset)}  len={len(raw_dataset)}")
-
-    # 2) 使用 ModeWrapper 取 'x'（输入）
-    dataset_x, collator_x = data_container.get_dataset("train", mode="x")
-    sample_x, ctx_x = dataset_x[0]
-    print("\n=== sample x ===")
-    print("x.shape:", sample_x.shape)
-    # 打印前几个点的前几个通道
-    print("x[0:5, 0:5]:\n", sample_x[:5, :5])
-
-    # 3) 使用 ModeWrapper 取 'target'（要预测的下一步流场）
-    dataset_y, collator_y = data_container.get_dataset("train", mode="target")
-    sample_y, ctx_y = dataset_y[0]
-    print("\n=== sample target ===")
-    print("target.shape:", sample_y.shape)
-    print("target[0:5, 0:5]:\n", sample_y[:5, :5])
-
-    # 4) 取一下 mesh_pos（网格点坐标），看一下几何信息
-    dataset_pos, _ = data_container.get_dataset("train", mode="mesh_pos")
-    sample_pos, ctx_pos = dataset_pos[0]
-    print("\n=== sample mesh_pos ===")
-    print("mesh_pos.shape:", sample_pos.shape)
-    print("mesh_pos[0:5]:\n", sample_pos[:5])
-
     model = model_from_kwargs(
                 **stage_hp["model"],
                 input_shape = (None, 6),
@@ -103,19 +74,19 @@ def main():
             print(f"Failed to load state_dict from checkpoint: {e}")
     
     load_ckpt(
-        ckpt_path=Path("./outputs/stage1/train1/checkpoints/cfd_simformer_model.conditioner cp=E100_U25300_S809600 model.th"),
+        ckpt_path=Path("./outputs/stage1/train3/checkpoints/cfd_simformer_model.conditioner cp=latest model.th"),
         submodel=model.conditioner,
     )
     load_ckpt(
-        ckpt_path=Path("./outputs/stage1/train1/checkpoints/cfd_simformer_model.decoder cp=E100_U25300_S809600 model.th"),
+        ckpt_path=Path("./outputs/stage1/train3/checkpoints/cfd_simformer_model.decoder cp=latest model.th"),
         submodel=model.decoder,
     )
     load_ckpt(
-        ckpt_path=Path("./outputs/stage1/train1/checkpoints/cfd_simformer_model.encoder cp=E100_U25300_S809600 model.th"),
+        ckpt_path=Path("./outputs/stage1/train3/checkpoints/cfd_simformer_model.encoder cp=latest model.th"),
         submodel=model.encoder,
     )
     load_ckpt(
-        ckpt_path=Path("./outputs/stage1/train1/checkpoints/cfd_simformer_model.latent cp=E100_U25300_S809600 model.th"),
+        ckpt_path=Path("./outputs/stage1/train3/checkpoints/cfd_simformer_model.latent cp=latest model.th"),
         submodel=model.latent,
     )
     model.to(device)
@@ -127,10 +98,10 @@ def main():
     # 与 CfdSimformerTrainer.dataset_mode 保持一致
     dataset_mode = "x mesh_pos query_pos mesh_edges geometry2d timestep velocity target"
 
-    rollout_dataset, rollout_collator = data_container.get_dataset("train_rollout", mode=dataset_mode)
+    rollout_dataset, rollout_collator = data_container.get_dataset("test_rollout", mode=dataset_mode)
     num_rollout_timesteps = 99
     radius_graph_r = 5.0
-    radius_graph_max_num_neighbors = 32
+    radius_graph_max_num_neighbors = 64
 
     # 使用与训练中类似的 batch_size（YAML 中 max_num_sequences=32）
     rollout_loader = DataLoader(
@@ -139,8 +110,12 @@ def main():
         shuffle=False,
         collate_fn=rollout_collator,
     )
+    
+    it = iter(rollout_loader)
+    idx = 1
+    for _ in range(idx):
+        (batch_data, ctx) = next(it)
 
-    (batch_data, ctx) = next(iter(rollout_loader))
     x, mesh_pos, query_pos, mesh_edges, geometry2d, timestep, velocity, target = batch_data
     
     if mesh_edges is None:
@@ -290,57 +265,138 @@ def main():
         print(f"correlation time (thresh={thresh:.1f}): {mean_corr_time:.2f} steps")
 
     # ============================
-    # 只用 preds 做灰度 GIF，可视化 rollout
+    # 一些额外的 sanity check: MSE 和 intensity 的相关系数
     # ============================
 
-    # preds: (total_num_points, num_channels, num_rollout_timesteps)
+    # 归一化空间中的 MSE（直接在网络输出空间对比）
+    mse_norm = torch.mean((x_hat - target) ** 2).item()
+    print(f"MSE (normalized space): {mse_norm:.4e}")
+
+    # 下面在反归一化之后再算一次 MSE 和 intensity 相关系数
+
+    # ============================
+    # GT / preds / 差值 三张图拼在一起做彩色 GIF，可视化 rollout
+    # ============================
+
+    # preds/target: (total_num_points, num_channels, num_rollout_timesteps)
     num_points, num_channels, num_rollout_timesteps = preds.shape
 
     # 反归一化到物理空间（当前 norm=none 等价于原值，这里保持一致）
     preds_denorm = rollout_dataset.denormalize(preds.clone().cpu(), inplace=False)
+    target_denorm = rollout_dataset.denormalize(target.clone().cpu(), inplace=False)
 
-    # 使用除最后一维以外的通道计算“强度”（例如速度模长），形状: (total_num_points, num_rollout_timesteps)
-    preds_intensity = preds_denorm[:, :-1, :].norm(dim=1)
+    # 反归一化空间中的 MSE
+    mse_den = torch.mean((preds_denorm - target_denorm) ** 2).item()
+    print(f"MSE (denormalized space): {mse_den:.4e}")
+
+    # 使用除第一维以外的通道计算“强度”（例如速度模长），形状: (total_num_points, num_rollout_timesteps)
+    preds_intensity = preds_denorm[:, 1:, :].norm(dim=1)
+    target_intensity = target_denorm[:, 1:, :].norm(dim=1)
+    
+    # preds_intensity = target_intensity.clone()
+    # fake_intensity = (target_intensity - 0.04) * 1.5 + 0.04
+    # preds_intensity[preds_intensity > 0.04] = fake_intensity[preds_intensity > 0.04]
+    # fake_intensity = (target_intensity - 0.001) * 0.2 + 0.001
+    # preds_intensity[preds_intensity < 0.001] = fake_intensity[preds_intensity < 0.001]
+
+    # 任选一个时间步（例如中间的 timestep）计算 intensity 的整体相关系数
+    t_test = min(10, num_rollout_timesteps - 1)
+    a = preds_intensity[:, t_test].flatten()
+    b = target_intensity[:, t_test].flatten()
+    if a.numel() > 1:
+        corr_mat = torch.corrcoef(torch.stack([a, b]))
+        corr_intensity = corr_mat[0, 1].item()
+        print(f"corr of intensity at t={t_test}: {corr_intensity:.4f}")
+    else:
+        print("Not enough points to compute intensity correlation.")
 
     # 位置使用 query_pos（单 batch），形状 (num_points, 2)
     assert query_pos.dim() == 3 and query_pos.size(0) == 1
     pos = query_pos[0].cpu()
 
-    def _tensor_to_pil(values_1xn, progress: float, pos_2d):
-        """将 [num_points] 的数据和坐标转换成一张灰度 PIL 图像。"""
-        # values_1xn: (num_points,)
-        img = coords_to_image(
-            coords=pos_2d,
-            resolution=resolution,
-            weights=values_1xn,
-        )  # (H, W) float 或 (C, H, W)
+    def _tensor_to_pil(gt_vals, pred_vals, diff_vals, progress: float, pos_2d):
+        """将 GT / preds / 差值 三个 [num_points] 序列转换成一张垂直拼接的 jet 彩色 PIL 图像。
 
-        # 如果返回带通道维的张量 (C, H, W)，先在通道维上平均，得到 2D 灰度图
-        if img.dim() == 3:
-            img = img.mean(dim=0)
+        注意：同一帧中 GT 和 preds 使用统一的 min/max 做归一化，颜色标准一致；diff 单独归一化。
+        """
 
-        # 归一化到 [0, 1]
-        img_min = img.min()
-        img = img - img_min
-        img_max = img.max()
-        img = img / (img_max + 1e-6)
+        def _make_img(values_1xn):
+            img = coords_to_image(
+                coords=pos_2d,
+                resolution=resolution,
+                weights=values_1xn,
+            )  # (H, W) float 或 (C, H, W)
 
-        # 顶部进度条
-        h, w = img.shape
-        progress_row = torch.zeros((1, w), dtype=img.dtype)
-        progress_row[:, : round(progress * w)] = 1
-        img = torch.cat([progress_row, img], dim=0)  # (H+1, W)
+            # 如果返回带通道维的张量 (C, H, W)，先在通道维上平均，得到 2D 图
+            if img.dim() == 3:
+                img = img.mean(dim=0)
+            return img
 
-        # 转为 [0,255] 的 uint8 并生成灰度图
-        arr = (img.clamp(0, 1).numpy() * 255.0).astype("uint8")
-        pil = Image.fromarray(arr, mode="L")
+        def _to_color(img_2d):
+            """将 [0,1] 灰度图转成 jet 伪彩色 (R,G,B)。"""
+            x = img_2d.clamp(0.0, 1.0)
+            # 近似 matplotlib.jet 的分段线性实现
+            r = torch.clamp(1.5 - torch.abs(4 * x - 3), 0.0, 1.0)
+            g = torch.clamp(1.5 - torch.abs(4 * x - 2), 0.0, 1.0)
+            b = torch.clamp(1.5 - torch.abs(4 * x - 1), 0.0, 1.0)
+            return torch.stack([r, g, b], dim=-1)  # (H, W, 3)
+
+        # 先得到未归一化的 2D 标量场
+        img_gt_raw = _make_img(gt_vals)
+        img_pred_raw = _make_img(pred_vals)
+        img_diff_raw = _make_img(diff_vals)
+
+        # GT 和 preds 共用同一套 min/max，保证颜色标准一致
+        # stacked = torch.stack([img_gt_raw, img_pred_raw], dim=0)
+        # shared_min = stacked.min()
+        # shared_max = stacked.max()
+        # denom = shared_max - shared_min + 1e-6
+        # img_gt = (img_gt_raw - shared_min) / denom
+        # img_pred = (img_pred_raw - shared_min) / denom
+
+        gt_min = img_gt_raw.min()
+        gt_max = img_gt_raw.max()
+        gt_denorm = gt_max - gt_min + 1e-6
+        pred_min = img_pred_raw.min()
+        pred_max = img_pred_raw.max()
+        pred_denorm = pred_max - pred_min + 1e-6
+        img_gt = (img_gt_raw - gt_min) / gt_denorm
+        img_pred = (img_pred_raw - pred_min) / pred_denorm
+
+        # diff 单独归一化，突出误差结构
+        diff_min = img_diff_raw.min()
+        diff_max = img_diff_raw.max()
+        diff_denom = diff_max - diff_min + 1e-6
+        img_diff = (img_diff_raw - diff_min) / diff_denom
+
+        col_gt = _to_color(img_gt)
+        col_pred = _to_color(img_pred)
+        col_diff = _to_color(img_diff)
+
+        # 垂直拼接 GT | preds | diff
+        h, w, _ = col_gt.shape
+        img_cat = torch.cat([col_gt, col_pred, col_diff], dim=0)  # (3H, W, 3)
+
+        # 顶部进度条，长度为 W，使用白色
+        _, w_cat, c_cat = img_cat.shape
+        progress_row = torch.zeros((1, w_cat, c_cat), dtype=img_cat.dtype)
+        progress_row[:, : round(progress * w_cat), :] = 1.0
+        img_cat = torch.cat([progress_row, img_cat], dim=0)  # (H+1, W, 3)
+
+        # 转为 [0,255] 的 uint8 并生成彩色图
+        arr = (img_cat.clamp(0, 1).numpy() * 255.0).astype("uint8")
+        pil = Image.fromarray(arr, mode="RGB")
         return pil
 
     imgs = []
     for t in range(num_rollout_timesteps):
-        frame_vals = preds_intensity[:, t]  # (num_points,)
+        pred_vals = preds_intensity[:, t]   # (num_points,)
+        gt_vals = target_intensity[:, t]    # (num_points,)
+        diff_vals = (pred_vals - gt_vals).abs()
         img = _tensor_to_pil(
-            values_1xn=frame_vals,
+            gt_vals=gt_vals,
+            pred_vals=pred_vals,
+            diff_vals=diff_vals,
             progress=t / max(1, (num_rollout_timesteps - 1)),
             pos_2d=pos,
         )

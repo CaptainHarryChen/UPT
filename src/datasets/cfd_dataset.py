@@ -143,6 +143,9 @@ class CfdDataset(DatasetBase):
                 self.std = torch.tensor([0.005249467678368092, 0.003499444341287017, 0.0002817418717313558])
             else:
                 raise NotImplementedError
+        elif version == "version1":
+            self.mean = torch.tensor([0.033461373299360275, -5.723683443648042e-06, 6.306973955361173e-05])
+            self.std = torch.tensor([0.01513607520610094, 0.010805316269397736, 0.0006485917256213725])
         else:
             raise NotImplementedError
 
